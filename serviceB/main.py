@@ -4,21 +4,23 @@ Verifies HMAC-SHA256 signatures on incoming requests.
 Rejects anything with invalid/missing/expired signatures.
 """
 
-import hmac
-import hashlib
 import base64
-import time
+import hashlib
+import hmac
 import json
+import os
+import time
 from datetime import datetime
-from fastapi import FastAPI, Request, HTTPException
+
+from fastapi import FastAPI, Request
 
 app = FastAPI(title="Service-B (Receiver)")
 
-# Shared secret — must match Service-A
-SECRET_KEY = "my-super-secret-key-change-in-production-2024"
+# Read from environment variables — NO hardcoded secrets
+SECRET_KEY = os.environ.get("HMAC_SECRET_KEY", "default-dev-key")
 
 # Max request age: 5 minutes (prevents replay attacks)
-MAX_AGE_MS = 300_000
+MAX_AGE_MS = int(os.environ.get("HMAC_MAX_AGE_MS", "300000"))
 
 
 def verify_signature(body: str, signature: str, timestamp: str) -> bool:
@@ -43,19 +45,13 @@ def verify_signature(body: str, signature: str, timestamp: str) -> bool:
 
     # Recalculate expected signature
     data_to_sign = f"{timestamp}.{body}"
-    expected = base64.b64encode(
-        hmac.new(
-            SECRET_KEY.encode(),
-            data_to_sign.encode(),
-            hashlib.sha256
-        ).digest()
-    ).decode()
+    expected = base64.b64encode(hmac.new(SECRET_KEY.encode(), data_to_sign.encode(), hashlib.sha256).digest()).decode()
 
     # Constant-time comparison (prevents timing attacks)
     valid = hmac.compare_digest(signature, expected)
 
     if not valid:
-        print(f"  REJECTED: Signature mismatch")
+        print("  REJECTED: Signature mismatch")
         print(f"    Expected: {expected[:30]}...")
         print(f"    Received: {signature[:30]}...")
 
@@ -86,9 +82,10 @@ async def hmac_auth_middleware(request: Request, call_next):
     if not signature or not timestamp or not verify_signature(body, signature, timestamp):
         print("  Result: REJECTED")
         print("━" * 50)
-        raise HTTPException(
-            status_code=401,
-            detail={"error": "HMAC verification failed", "message": "Invalid or missing signature"}
+        from starlette.responses import JSONResponse
+
+        return JSONResponse(
+            status_code=401, content={"error": "HMAC verification failed", "message": "Invalid or missing signature"}
         )
 
     print("  Result: VERIFIED ✓")
@@ -120,4 +117,5 @@ def health():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8001)

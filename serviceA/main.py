@@ -3,19 +3,21 @@ Service-A (Sender) — Port 8000
 Signs outgoing requests with HMAC-SHA256 before sending to Service-B.
 """
 
-import hmac
-import hashlib
 import base64
-import time
+import hashlib
+import hmac
 import json
-from fastapi import FastAPI
+import os
+import time
+
 import httpx
+from fastapi import FastAPI
 
 app = FastAPI(title="Service-A (Sender)")
 
-# Shared secret — must match Service-B
-SECRET_KEY = "my-super-secret-key-change-in-production-2024"
-SERVICE_B_URL = "http://localhost:8001"
+# Read from environment variables — NO hardcoded secrets
+SECRET_KEY = os.environ.get("HMAC_SECRET_KEY", "default-dev-key")
+SERVICE_B_URL = os.environ.get("SERVICE_B_URL", "http://localhost:8001")
 
 
 def generate_signature(body: str, timestamp: str) -> str:
@@ -27,11 +29,7 @@ def generate_signature(body: str, timestamp: str) -> str:
     3. Base64 encode for safe HTTP header transport
     """
     data_to_sign = f"{timestamp}.{body}"
-    signature = hmac.new(
-        SECRET_KEY.encode(),
-        data_to_sign.encode(),
-        hashlib.sha256
-    ).digest()
+    signature = hmac.new(SECRET_KEY.encode(), data_to_sign.encode(), hashlib.sha256).digest()
     return base64.b64encode(signature).decode()
 
 
@@ -79,4 +77,5 @@ def health():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -1,0 +1,33 @@
+services:
+
+  service-a:
+    build: ./serviceA
+    container_name: hmac-service-a
+    ports:
+      - "${SERVICE_A_PORT}:8000"
+    environment:
+      HMAC_SECRET_KEY: ${HMAC_SECRET_KEY}
+      SERVICE_B_URL: http://service-b:8001
+    depends_on:
+      - service-b
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  service-b:
+    build: ./serviceB
+    container_name: hmac-service-b
+    ports:
+      - "${SERVICE_B_PORT}:8001"
+    environment:
+      HMAC_SECRET_KEY: ${HMAC_SECRET_KEY}
+      HMAC_MAX_AGE_MS: ${HMAC_MAX_AGE_MS}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
